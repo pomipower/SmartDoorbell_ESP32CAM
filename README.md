@@ -28,22 +28,22 @@ The system features real-time facial recognition using 128-dimensional embedding
 - Ensure Python 3.8+ is installed on your machine.
 - Clone this repository and navigate to the root directory.
 - Install the required Python dependencies:  
-   pip install -r requirements.txt
+   ```pip install -r requirements.txt```
 
-- Create a folder named known_faces in the root directory.
-- Place clear, well-lit photos of authorized users in the known_faces directory. Name the files exactly as you want them to appear (e.g., John.jpg, Sarah.png).
+- Create a folder named `known_faces` in the root directory.
+- Place clear, well-lit photos of authorized users in the `known_faces` directory. Name the files exactly as you want them to appear (e.g., John.jpg, Sarah.png).
 
 ### Phase 2: Firmware Flashing (ESP32 Nodes)
 
 - Open the Arduino IDE.
 - Install the following libraries via the Library Manager:
-  - ArduinoJson by Benoit Blanchon
-  - WebSockets by Markus Sattler
-  - TFT*eSPI by Bodmer *(Configure User*Setup.h in the library folder for your specific display)*
-  - TJpg_Decoder by Bodmer
-- Open Doorbell_Outdoor_Cam.ino and Doorbell_Indoor_Display.ino.
+  - `ArduinoJson` by Benoit Blanchon
+  - `WebSockets` by Markus Sattler
+  - `TFT*eSPI` by Bodmer *(Configure `User*Setup.h` in the library folder for your specific display)*
+  - `TJpg_Decoder` by Bodmer
+- Open `Doorbell_Outdoor_Cam.ino` and `Doorbell_Indoor_Display.ino`.
 - Update the Wi-Fi credentials (ssid, password) in both files.
-- Update the serverName, websocket_server, and image_url variables with the **IPv4 Address of your PC running the Flask server**.
+- Update the `serverName`, `websocket_server`, and `image_url` variables with the **IPv4 Address of your PC running the Flask server**.
 - Flash the respective codes to your ESP32-CAM and ESP32 Display Module.
 
 ### Phase 3: System Execution
@@ -52,13 +52,13 @@ To bring the system online, the boot sequence is critical. Open two separate ter
 
 **Terminal 1 (Backend Server):**
 
-python doorbell_server.py
+```python doorbell_server.py```
 
 _Wait for the "Smart Doorbell Server Active on Port 5050..." message._
 
 **Terminal 2 (Admin Dashboard):**
 
-streamlit run doorbell_dashboard.py
+```streamlit run doorbell_dashboard.py```
 
 _Your browser will automatically open the admin panel._
 
