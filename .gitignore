@@ -1,0 +1,23 @@
+# Python Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Streamlit Cache
+.streamlit/
+
+# ESP32 Build Artifacts (if using Arduino CLI/PlatformIO later)
+build/
+.pio/
+
+# Debug Images (Don't upload the temporary photos)
+debug_latest_photo.jpg
+security_log.csv
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
