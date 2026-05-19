@@ -44,7 +44,7 @@ with tab_live:
                 with Image.open(IMAGE_PATH) as img:
                     # Streamlit handles BGR to RGB conversion automatically if needed, 
                     # but OpenCV writes as BGR. We'll let Streamlit render it directly.
-                    st.image(img.copy(), use_container_width=True, channels="BGR")
+                    st.image(img.copy(), width='stretch', channels="BGR")
             except Exception as e:
                 st.warning(f"Error loading image: {e}")
         else:
@@ -83,7 +83,7 @@ with tab_analytics:
     st.markdown("---")
     st.markdown("### Detailed Visitor Log")
     # Display the full database table, newest records first
-    st.dataframe(df.sort_values(by="Timestamp", ascending=False), use_container_width=True)
+    st.dataframe(df.sort_values(by="Timestamp", ascending=False), width='stretch')
 
 with tab_admin:
     st.markdown("### Database Management")
