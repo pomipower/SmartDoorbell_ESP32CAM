@@ -1,0 +1,540 @@
+# Smart Doorbell — Week 1 Build Guide (Updated)
+# Display: PANLEE BC02 (ZX3D95CE01S-TR-V12) / Wireless-Tag WT32S3-86S
+# ====================================================================
+
+
+═══════════════════════════════════════════════════════════════
+  KEY CHANGE FROM PREVIOUS VERSION
+═══════════════════════════════════════════════════════════════
+
+The display boards in this project are NOT the TFT/SPI displays
+from the previous build guide. They are fundamentally different.
+
+Previous plan (CYD / Waveshare 2.8"):
+  • SPI interface, 240×320, TFT_eSPI library
+  • User_Setup.h configuration files
+
+Current hardware (BC02 / WT32S3-86S):
+  • RGB565 parallel interface, 480×480 square IPS display
+  • GC9503V LCD driver, FT5x06 capacitive touch
+  • ESP32-S3-WROVER-N16R8 (16 MB Flash, 8 MB OPI PSRAM)
+  • PanelLan + LovyanGFX library stack
+  • No USB — requires external UART programmer to flash
+  • No TFT_eSPI. No User_Setup.h. No TJpgDec.
+
+The two boards (BC02 and WT32S3-86S) are IDENTICAL hardware
+under different brand names. Confirmed by openHASP community
+teardown: same module, same RGB panel, same GPIO assignments.
+Use BOARD_BC02 in PanelLan for both.
+
+Files CHANGED: doorbell_display.ino (complete rewrite)
+Files REMOVED: User_Setup_CYD.h, User_Setup_Waveshare28.h
+Files UNCHANGED: doorbell_cam.ino, doorbell_server.py,
+                 doorbell_dashboard.py
+
+
+═══════════════════════════════════════════════════════════════
+  SYSTEM ARCHITECTURE
+═══════════════════════════════════════════════════════════════
+
+  [OUTDOOR]              [SERVER — your PC]       [INDOOR]
+  ESP32-CAM              Flask + face_recognition  BC02 / WT32S3-86S
+  AI-Thinker             Python                    ESP32-S3 + 480×480
+  ─────────────          ────────────────────────  ─────────────────
+  Button pressed  POST → /doorbell_ring       POLL  /latest_event (2s)
+  JPEG sent ─────────→  Face recognition     ←GET  /latest_image
+  Relay trigger  ←────  Log to CSV
+                         /latest_event JSON
+                         /latest_image JPEG       [DASHBOARD]
+                                              ←──  Streamlit browser
+
+
+═══════════════════════════════════════════════════════════════
+  PART 1 — OUTDOOR UNIT WIRING (unchanged from previous guide)
+  ESP32-CAM AI-Thinker + Relay Module (JQC3F-05VDC-C)
+═══════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────────────────────────────┐
+│  RELAY MODULE (JQC3F-05VDC-C, Active-LOW, 5 V coil)          │
+│                                                              │
+│  Relay pin   →  ESP32-CAM / Power rail                       │
+│  ──────────────────────────────────────────────────────────  │
+│  VCC         →  5 V rail  (from MB Download module)          │
+│  GND         →  GND rail                                     │
+│  IN          →  GPIO 13   (active-LOW control signal)        │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│  DOORBELL BUTTON                                             │
+│                                                              │
+│  Leg 1 (diagonal pair)  →  GPIO 1  (TX, freed by Serial.end) │
+│  Leg 2 (diagonal pair)  →  GND rail                          │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│  DOOR LATCH / ELECTRIC STRIKE (external 12 V circuit)        │
+│                                                              │
+│  Relay COM   →  + terminal of 12 V supply                    │
+│  Relay NO    →  + terminal of electric strike solenoid       │
+│  Strike −    →  − terminal of 12 V supply                    │
+│                                                              │
+│  Logic: de-energised (GPIO HIGH) = locked (NO is open)       │
+│         energised    (GPIO LOW)  = unlocked (NO closes)      │
+│         Auto-relocks after 3 seconds in firmware             │
+└──────────────────────────────────────────────────────────────┘
+
+BOOT SEQUENCE for ESP32-CAM (unchanged):
+  1. Disconnect relay module VCC from 5 V rail.
+  2. Power the ESP32-CAM via the MB Download module.
+  3. Wait 5–8 seconds (watch for 3 quick LED blinks = WiFi OK).
+  4. Reconnect relay VCC to 5 V.
+
+
+═══════════════════════════════════════════════════════════════
+  PART 2 — INDOOR UNIT HARDWARE (BC02 / WT32S3-86S)
+═══════════════════════════════════════════════════════════════
+
+── 2A. What's on the board ───────────────────────────────────
+
+  The display board is a self-contained unit:
+    • ESP32-S3 module (WiFi + BT)
+    • 3.95" 480×480 IPS display (RGB565 parallel interface)
+    • Capacitive touch (FT5x06, I2C)
+    • RS485 chip (unused in this project)
+    • SHT20 temp/humidity sensor (unused in this project)
+    • Multi-pin external connectors on the back
+
+  Power supply: the board accepts 5 V DC via pins on the back
+  connector (Sub Board Interface pins 1,2 = +5V; pins 3,4 = GND).
+  The WT32S3-86S also accepts 5 V via the programmer connector.
+
+── 2B. How to flash — CRITICAL DIFFERENCE ───────────────────
+
+  NEITHER BOARD HAS A USB CONNECTOR for programming.
+  Both are programmed via UART using an external tool.
+
+  ╔══════════════════════════════════════════════════════════╗
+  ║  WT32S3-86S (being ordered from robu.in)                 ║
+  ║  ─────────────────────────────────────────────────────   ║
+  ║  Comes WITH a ZXACC-ESPDB programmer in the box.         ║
+  ║  Plug the programmer into USB on your PC.                ║
+  ║  Connect programmer ↔ display via the included cable.    ║
+  ║  ZXACC-ESPDB has auto-reset (DTR/RTS) so Arduino IDE     ║
+  ║  uploads without manually pressing BOOT/RST.             ║
+  ╚══════════════════════════════════════════════════════════╝
+
+  ╔══════════════════════════════════════════════════════════╗
+  ║  BC02 ZX3D95CE01S-TR-V12 (what you currently have)       ║
+  ║  ─────────────────────────────────────────────────────   ║
+  ║  Does NOT come with a programmer.                        ║
+  ║  You need one of:                                        ║
+  ║    Option A (easiest): Any CH340/CP2102/FTDI USB-to-UART ║
+  ║                        adapter (3.3 V logic levels)      ║
+  ║    Option B: An Arduino board used as a pass-through     ║
+  ║              programmer (bridge mode)                    ║
+  ╚══════════════════════════════════════════════════════════╝
+
+── 2C. BC02 connector pinout ─────────────────────────────────
+
+  The BC02 has two connectors on the back PCB:
+
+  ┌─ DOWNLOAD INTERFACE (small 6-pin JST connector) ─────────┐
+  │  Pin 1  →  3.3 V    (powers the ESP32-S3)                │
+  │  Pin 2  →  TXD      (ESP32-S3 TX → connect to adapter RX)│
+  │  Pin 3  →  RXD      (ESP32-S3 RX → connect to adapter TX)│
+  │  Pin 4  →  EN       (chip enable, tie HIGH via 10kΩ)      │
+  │  Pin 5  →  BOOT     (GPIO 0 — pull LOW to enter DL mode)  │
+  │  Pin 6  →  GND                                            │
+  └──────────────────────────────────────────────────────────┘
+
+  ┌─ SUB BOARD INTERFACE (larger 20-pin 2mm pitch connector) ─┐
+  │  Pin 1,2   →  +5 V     (use this to power the board)     │
+  │  Pin 3,4   →  GND                                        │
+  │  Pin 11    →  EN       (tie HIGH)                        │
+  │  Pin 12    →  GPIO 0   (BOOT — pull LOW for flash mode)  │
+  │  Pin 13    →  RXD      (ESP32-S3 RX)                     │
+  │  Pin 14    →  TXD      (ESP32-S3 TX)                     │
+  └──────────────────────────────────────────────────────────┘
+
+── 2D. Wiring the BC02 to a CH340/CP2102 USB-UART adapter ────
+
+  ┌────────────────────────────────────────────────────────────┐
+  │  USB-UART Adapter   →   BC02 Download Interface            │
+  │  ──────────────────────────────────────────────────────    │
+  │  3.3 V              →   Pin 1  (3V3)  ← power supply      │
+  │  GND                →   Pin 6  (GND)                       │
+  │  TX                 →   Pin 3  (RXD)  ← NOTE: TX→RX, RX→TX│
+  │  RX                 →   Pin 2  (TXD)                       │
+  │  [manual boot, see below]                                  │
+  └────────────────────────────────────────────────────────────┘
+
+  IMPORTANT — 3.3 V ONLY:
+  The ESP32-S3 GPIO pins are NOT 5 V tolerant.
+  Use a 3.3 V adapter or a 5 V adapter with a level shifter.
+  Most modern CH340G breakout boards have a 3.3/5 V jumper — 
+  set it to 3.3 V.
+
+  IMPORTANT — Current:
+  The display board draws significant current during operation.
+  Power via the Sub Board Interface +5V pins (from your PC USB
+  or a separate 5 V power bank), NOT from the adapter's 3.3 V
+  pin which often can only supply 100–200 mA.
+
+  Practical wiring with separate power:
+    USB-UART adapter: TX → BC02 RXD
+                      RX → BC02 TXD
+                      GND → BC02 GND
+    5V supply (USB power bank or PC USB):
+                      5V → BC02 Sub Board Interface Pin 1,2
+                      GND → BC02 Sub Board Interface Pin 3,4
+
+── 2E. Entering flash mode (manual boot sequence) ────────────
+
+  Because the BC02 doesn't have auto-reset (unlike the official
+  ZXACC-ESPDB programmer), you must manually put it into
+  download mode each time you flash:
+
+  Method 1 — Wire a momentary button between BOOT (Pin 5) and GND:
+    1. Press and HOLD the BOOT button.
+    2. Press and release the EN button (or momentarily pull EN LOW).
+    3. Release the BOOT button.
+    4. Within 2 seconds, click Upload in Arduino IDE.
+
+  Method 2 — Use DTR/RTS from your adapter (if it has them):
+    Connect adapter DTR pin → BC02 BOOT pin (via 100 nF cap)
+    Connect adapter RTS pin → BC02 EN   pin (via 100 nF cap)
+    This replicates the auto-reset circuit and lets Arduino IDE
+    auto-enter flash mode (same as the official programmer).
+
+  Method 3 — Direct wire for one-time flash:
+    1. Before connecting power: short BOOT (Pin 5) to GND.
+    2. Apply power.
+    3. Remove the BOOT-GND short.
+    4. Upload from Arduino IDE — board is now in download mode.
+
+  After flashing:
+    Press the RST button on the back of the board (or toggle EN)
+    to reboot into normal running mode.
+
+
+═══════════════════════════════════════════════════════════════
+  PART 3 — SOFTWARE SETUP (one-time, on your PC)
+═══════════════════════════════════════════════════════════════
+
+── 3A. Python environment (same as before) ───────────────────
+
+  python -m venv venv
+  # Windows:  venv\Scripts\activate
+  # macOS/Linux:  source venv/bin/activate
+
+  pip install flask opencv-python face-recognition numpy streamlit pillow requests
+
+── 3B. Folder structure ──────────────────────────────────────
+
+  doorbell_project/
+  ├── doorbell_server.py
+  ├── doorbell_dashboard.py
+  ├── known_faces/           ← one clear photo per authorised person
+  │     alice.jpg            ← filename becomes the display name
+  │     john_smith.jpg       ← becomes "John Smith"
+  ├── captures/              ← auto-created by server
+  └── security_log.csv       ← auto-created by server
+
+── 3C. Arduino IDE setup for the display board ───────────────
+
+  Step 1 — Install ESP32 board package (if not already installed):
+    Arduino IDE → File → Preferences → Additional Boards Manager URLs:
+    Add: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+    Then: Tools → Board → Boards Manager → search "esp32" → install
+    (Install the Espressif Systems package, version 2.0.9 or later)
+
+  Step 2 — Install required libraries via Library Manager
+    (Tools → Manage Libraries):
+
+    Library 1: "LovyanGFX"  by lovyan03   — version 1.1.9 or later
+    Library 2: "PanelLan"   by smartpanle — any version
+    Library 3: "ArduinoJson" by bblanchon — version 6.x
+
+    NOTE: If PanelLan doesn't appear in Library Manager, install manually:
+      1. Go to: https://github.com/smartpanle/PanelLan_esp32_arduino
+      2. Click Code → Download ZIP
+      3. Arduino IDE → Sketch → Include Library → Add .ZIP Library
+
+  Step 3 — Board settings for BC02 / WT32S3-86S:
+    Tools → Board              : "ESP32S3 Dev Module"
+    Tools → Flash Size         : "16MB (128Mb)"
+    Tools → Flash Mode         : QIO 80MHz
+    Tools → PSRAM              : "OPI PSRAM"     ← CRITICAL: wrong value = blank screen
+    Tools → Partition Scheme   : "Huge APP (3MB No OTA/1MB SPIFFS)"
+    Tools → USB CDC On Boot    : "Disabled"      ← no USB on these boards
+    Tools → Upload Speed       : 921600
+    Tools → Port               : select your USB-UART adapter's COM port
+
+  There is NO User_Setup.h to edit. PanelLan handles everything.
+
+── 3D. Verify programmer driver is installed ─────────────────
+
+  After plugging in the ZXACC-ESPDB or your CH340/CP2102:
+    Windows: Device Manager → Ports (COM & LPT) → should show COMx
+    macOS  : ls /dev/cu.* — should show /dev/cu.usbserial-xxxx
+    Linux  : ls /dev/ttyUSB* — should show /dev/ttyUSB0
+
+  If no port appears:
+    CH340 driver (Windows):  https://www.wch-ic.com/downloads/CH341SER_EXE.html
+    CP2102 driver (Windows): https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers
+
+
+═══════════════════════════════════════════════════════════════
+  PART 4 — CONFIGURATION (fill in before flashing)
+═══════════════════════════════════════════════════════════════
+
+Step 1 — Find your PC's local IP address:
+  Windows:  Command Prompt → ipconfig → look for IPv4 under WiFi adapter
+  macOS:    System Settings → WiFi → Details → IP Address
+  Linux:    ip a → look for inet under wlan0
+
+Step 2 — Edit doorbell_cam.ino (outdoor unit):
+  const char* WIFI_SSID     = "YOUR_WIFI_SSID";
+  const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+  const char* SERVER_URL    = "http://192.168.1.47:5050/doorbell_ring";
+  //                                          ^^^^ your PC IP
+
+Step 3 — Edit doorbell_display.ino (indoor unit):
+  const char* WIFI_SSID     = "YOUR_WIFI_SSID";
+  const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+  const char* SERVER_BASE   = "http://192.168.1.47:5050";
+  //                                        ^^^^ same IP
+
+Step 4 — No changes needed to:
+  doorbell_server.py, doorbell_dashboard.py
+
+
+═══════════════════════════════════════════════════════════════
+  PART 5 — FLASHING FIRMWARE
+═══════════════════════════════════════════════════════════════
+
+── Outdoor unit (ESP32-CAM AI-Thinker) ──────────────────────
+
+  Board: "AI Thinker ESP32-CAM"
+  Partition: "Huge APP (3MB No OTA)"
+  Upload Speed: 115200
+
+  1. Hold IO0 on MB module, connect power (or press RST).
+  2. Release IO0.
+  3. Click Upload in Arduino IDE.
+  4. After "Done uploading", press RST.
+
+── Indoor unit (BC02 / WT32S3-86S) ──────────────────────────
+
+  With the ZXACC-ESPDB programmer (WT32S3-86S or if you buy one):
+    1. Connect programmer to PC via USB-C.
+    2. Connect programmer to display board via the included cable.
+    3. Select the correct COM port in Arduino IDE.
+    4. Click Upload. Auto-reset handles everything.
+
+  With a CH340/CP2102 adapter (BC02 without programmer):
+    1. Wire as described in Part 2D.
+    2. Enter flash mode using Method 1 from Part 2E
+       (hold BOOT, tap EN, release BOOT).
+    3. Click Upload in Arduino IDE.
+    4. After "Done uploading", press RST or toggle EN.
+
+  IMPORTANT — if you see "Failed to connect to ESP32-S3":
+    • Wrong baud rate — try 115200 instead of 921600
+    • Didn't enter flash mode — repeat the BOOT+EN sequence
+    • Wires TX/RX are swapped — swap them and retry
+    • 5V logic from adapter — switch adapter to 3.3V mode
+
+
+═══════════════════════════════════════════════════════════════
+  PART 6 — RUNNING THE SYSTEM
+═══════════════════════════════════════════════════════════════
+
+Terminal 1 — Flask server:
+  cd doorbell_project
+  python doorbell_server.py
+
+  Expected output:
+    ══════════════════════════════════════════════
+      Smart Doorbell Server — Loading known faces
+    ══════════════════════════════════════════════
+      ✓  Loaded: Alice
+      ✓  Loaded: John Smith
+      Total known persons: 2
+    ══════════════════════════════════════════════
+      Server listening on  http://0.0.0.0:5050
+      → http://192.168.1.47:5050
+    ══════════════════════════════════════════════
+
+Terminal 2 — Streamlit dashboard:
+  cd doorbell_project
+  streamlit run doorbell_dashboard.py
+  (Opens at http://localhost:8501)
+
+Power on outdoor unit:
+  Follow the 5-second boot sequence.
+  Watch LED: slow blinks → WiFi connecting; 3 quick blinks = OK.
+
+Power on indoor display:
+  Screen sequence:
+    Black → "Smart Doorbell / Connecting to WiFi..." →
+    animated dots → "Connected! / 192.168.1.XX" →
+    Idle screen: circular icon + "Smart Doorbell / Awaiting visitor..."
+
+Test the full flow:
+  Press doorbell button.
+  Expected:
+    Outdoor: 3 blinks → capture → LED blink during upload
+    Server:  [✓] SUCCESS | Alice | 14:32:10
+    Display: Photo fills top 360 px → green bar "Welcome, Alice!"
+    Relay:   Click → holds 3 s → click (relock)
+    Dashboard: Live Feed updates, counter increments
+
+
+═══════════════════════════════════════════════════════════════
+  PART 7 — DISPLAY-SPECIFIC TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════
+
+PROBLEM: Screen stays black after upload
+  → Most likely PSRAM setting is wrong in Arduino IDE.
+    Must be: Tools → PSRAM → "OPI PSRAM"
+    "Disabled" or "QSPI PSRAM" will cause PanelLan to fail silently.
+  → Verify Flash Size is "16MB (128Mb)" not 4MB
+  → Try a full power cycle (not just RST) after first flash
+
+PROBLEM: "FATAL: PSRAM alloc failed!" on screen
+  → Same cause as above — PSRAM not enabled in board settings
+  → Fix board settings and re-flash
+
+PROBLEM: Screen shows scrambled/tearing colours
+  → This is a known RGB interface timing issue on some BC02 units
+  → Fix: use the arduino-esp32-sdk with adjusted RGB timing:
+      https://github.com/esp-arduino-libs/arduino-esp32-sdk
+  → Short-term: try reducing display clock speed in PanelLan config
+
+PROBLEM: Screen image looks correct but colours are wrong (e.g. red looks blue)
+  → RGB/BGR byte order issue in LovyanGFX
+  → This is handled by BOARD_BC02 internally — should not occur
+  → If it does, open the PanelLan library source and check the
+    GC9503 init commands for the colour order setting
+
+PROBLEM: "Failed to connect to ESP32-S3" when uploading
+  → See flashing tips in Part 5
+  → The most common cause is not entering flash mode correctly
+  → With BC02: try slowing upload to 115200 baud for first flash
+
+PROBLEM: Upload succeeds but board doesn't boot (no display activity)
+  → You flashed a config for wrong PSRAM type and corrupted boot
+  → Use esptool.py to erase flash completely, then re-flash:
+    esptool.py --chip esp32s3 --port COMx erase_flash
+  → Then re-upload with correct board settings
+
+PROBLEM: WiFi connects but /latest_event returns connection refused
+  → Server is not running — start doorbell_server.py first
+  → Windows Firewall: allow Python through private networks
+    Control Panel → Firewall → Allow an app → add Python
+  → Verify SERVER_BASE IP matches your PC's current IP (it may
+    change after router restart — check with ipconfig again)
+
+PROBLEM: Visitor image appears but at wrong size or cut off
+  → The server-side VGA JPEG (640×480) at scale ÷0.75 = 480×360
+    should fill the 480×360 image area perfectly.
+  → If cut off: the server may be sending a different frame size
+    (e.g. SVGA 800×600). Either change frame size in doorbell_cam.ino
+    to FRAMESIZE_VGA, or the drawJpg call will still scale to fit.
+  → LovyanGFX's drawJpg with maxWidth/maxHeight always scales to
+    fit while preserving aspect ratio — it should not clip.
+
+PROBLEM: Face not recognised
+  → Same as before: check known_faces/ photos, tolerance value,
+    lighting. See original troubleshooting guide.
+
+
+═══════════════════════════════════════════════════════════════
+  PART 8 — COMPLETE PROJECT FILE LIST
+═══════════════════════════════════════════════════════════════
+
+  doorbell_project/
+  ├── 1_ESP32_CAM_Outdoor/
+  │   └── doorbell_cam.ino              ← No changes from v1
+  ├── 2_Indoor_Display/
+  │   └── doorbell_display.ino          ← Complete rewrite for BC02
+  │   [User_Setup_*.h files removed — not needed with PanelLan]
+  └── 3_Server_Dashboard/
+      ├── doorbell_server.py            ← No changes from v1
+      └── doorbell_dashboard.py         ← No changes from v1
+
+
+═══════════════════════════════════════════════════════════════
+  PART 9 — 2-DAY BUILD SCHEDULE
+═══════════════════════════════════════════════════════════════
+
+DAY 1 — Outdoor unit + Server
+──────────────────────────────
+Morning:
+  □ Set up Python venv and install dependencies
+  □ Fill in WiFi credentials + server IP in doorbell_cam.ino
+  □ Flash doorbell_cam.ino to ESP32-CAM
+  □ Wire relay (VCC, GND, IN → GPIO 13)
+  □ Start doorbell_server.py
+
+Test (indoor display not needed yet):
+  □ Press button → server console logs SUCCESS/DENIED
+  □ Confirm relay clicks on SUCCESS
+  □ Check captures/ folder — new JPEG appears each press
+  □ Start doorbell_dashboard.py → verify Live Feed shows image
+
+Afternoon:
+  □ Test multi-person and unknown-person scenarios
+  □ Fine-tune tolerance in doorbell_server.py if needed
+  □ Confirm relay re-locks after 3 seconds
+
+DAY 2 — Indoor display unit
+────────────────────────────
+Morning:
+  □ Identify which board you have (WT32S3-86S or BC02)
+  □ Set up programmer (ZXACC-ESPDB or CH340/CP2102)
+  □ Install LovyanGFX, PanelLan, ArduinoJson via Library Manager
+  □ Set board to "ESP32S3 Dev Module" with OPI PSRAM (critical)
+  □ Fill in WiFi + server IP in doorbell_display.ino
+  □ Flash (use manual BOOT+EN sequence if no auto-reset programmer)
+
+Test:
+  □ Display shows boot screen → "Connected!" → idle screen
+  □ Press doorbell button → visitor photo + status bar within 2s
+  □ SUCCESS: green bar; DENIED: red bar; FAILED: blue bar
+  □ Confirm both units respond simultaneously
+
+Afternoon:
+  □ Adjust display brightness in firmware if needed (setBrightness)
+  □ Tidy wiring, test relay timing
+  □ Full demo run: unknown visitor (denied) + known visitor (unlocked)
+  □ Capture sample output photos for documentation
+
+
+═══════════════════════════════════════════════════════════════
+  PART 10 — WEEK 2+ ROADMAP
+═══════════════════════════════════════════════════════════════
+
+Week 2: Mobile app access
+  • Expose server over internet via ngrok or dynamic DNS
+  • Push notifications via Firebase FCM
+  • React Native or Flutter mobile app for remote viewing
+
+Week 3: Voice recognition
+  • INMP441 I2S microphone module on outdoor ESP32-CAM
+  • Wake-word detection (ESP-SR or custom MFCC pipeline)
+  • Voice print matching via server-side resemblyzer/speechbrain
+
+Week 4: Improved CV
+  • MTCNN face detection (more accurate in low light)
+  • Anti-spoofing (photo-vs-live face)
+  • Night mode: trigger GPIO 4 flash LED during capture
+
+Week 5–6: Product polish
+  • Weatherproof outdoor enclosure
+  • OTA firmware updates (Arduino OTA)
+  • Cloud database (Supabase/Firebase) instead of local CSV
+  • Two-way audio intercom (I2S DAC + amplifier)
+  • Touch-to-unlock on the indoor display (FT5x06 already wired)
+    — tap the SUCCESS bar to manually trigger relay
