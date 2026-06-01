@@ -17,9 +17,9 @@ build/
 # Debug Images (Don't upload the temporary photos)
 debug_latest_photo.jpg
 security_log.csv
-Version2/latest_capture.jpg
-Version2/known_faces/
-Version2/captures/
+*/latest_capture.jpg
+*/known_faces/
+*/captures/
 
 # OS Generated Files
 .DS_Store
