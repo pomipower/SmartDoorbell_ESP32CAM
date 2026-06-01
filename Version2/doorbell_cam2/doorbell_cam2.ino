@@ -22,7 +22,7 @@ const char* WIFI_PASSWORD = "PASSWORD";
 
 // ── STEP 2: Set your server's local IP (run `ipconfig` / `ip a`)
 //            Keep port 5050 unless you changed it in the server
-const char* SERVER_URL = "http://192.168.28.36:5050/doorbell_ring";
+const char* SERVER_URL = "http://[IP_ADDRESS]:5050/doorbell_ring";
 // ─────────────────────────────────────────────────────────────
 
 // ── Hardware pins ─────────────────────────────────────────────

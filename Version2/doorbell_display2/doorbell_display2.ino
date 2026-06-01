@@ -45,7 +45,7 @@ const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 // ════════════════════════════════════════════════════════════
 //  STEP 2 — Server IP  (run `ipconfig` on your PC to find it)
 // ════════════════════════════════════════════════════════════
-const char* SERVER_BASE = "http://192.168.1.XXX:5050";
+const char* SERVER_BASE = "http://[IP_ADDRESS]:5050";
 
 // ────────────────────────────────────────────────────────────
 #include "PanelLan.h"        // Wraps LovyanGFX; configures RGB bus for BC02
