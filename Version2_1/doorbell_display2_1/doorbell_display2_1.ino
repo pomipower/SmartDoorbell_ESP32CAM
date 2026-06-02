@@ -1,5 +1,5 @@
 // ============================================================
-//  SMART DOORBELL — INDOOR DISPLAY UNIT
+//  SMART DOORBELL — INDOOR DISPLAY UNIT (Version 2.1)
 //  Compatible boards:
 //    • PANLEE BC02  (ZX3D95CE01S-TR-V12)   — no USB, uses UART programmer
 //    • Wireless-Tag WT32S3-86S              — comes with programmer
@@ -30,8 +30,9 @@
 //   │     Visitor JPEG image (480×360)     │
 //   │       (LovyanGFX scales to fit)      │
 //   │                                      │
+//   │     [ ADMIT ]          [ DENY ]      │ <-- V2.1: Touch buttons if PENDING
 //   ├──────────────────────────────────────┤ y=360
-//   │  ██  Welcome, John!      [SUCCESS]   │
+//   │  ██  ACTION REQUIRED!  [PENDING]     │ <-- V2.1: Orange background status
 //   │      2025-01-15  14:32:10            │
 //   └──────────────────────────────────────┘ y=480
 // ============================================================

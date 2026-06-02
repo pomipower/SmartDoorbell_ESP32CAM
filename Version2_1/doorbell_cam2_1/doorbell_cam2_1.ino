@@ -1,7 +1,11 @@
 // ============================================================
-//  SMART DOORBELL — OUTDOOR UNIT
+//  SMART DOORBELL — OUTDOOR UNIT (Version 2.1)
 //  Board : AI-Thinker ESP32-CAM (OV2640 camera)
-//  Role  : Capture visitor → POST to server → trigger relay
+//  Role  : Capture visitor → POST to server → Handle Auth / Poll → Trigger Relay
+//
+//  V2.1 Behavior: 
+//    If face is unknown, camera enters a 60-second polling loop 
+//    checking /doorbell_status until the admin clicks Admit/Deny.
 //
 //  PIN SUMMARY (LCD removed, pins freed):
 //    GPIO  1 (TX)  → Doorbell button (INPUT_PULLUP, after Serial.end())

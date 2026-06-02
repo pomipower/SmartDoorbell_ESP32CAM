@@ -1,6 +1,6 @@
 """
-Smart Doorbell — Backend Server
-================================
+Smart Doorbell — Backend Server (Version 2.1)
+=============================================
 Flask server running on your PC/laptop.
 
 Endpoints
@@ -9,6 +9,8 @@ POST /doorbell_ring        ← ESP32-CAM posts raw JPEG here
 GET  /latest_event         ← Indoor display polls this every 2s (JSON)
 GET  /latest_image         ← Indoor display fetches JPEG after new event
 GET  /get_image/<filename> ← Streamlit dashboard fetches thumbnails
+POST /resolve_event        ← Display/Dashboard posts ADMIT/DENY actions here
+GET  /doorbell_status      ← ESP32-CAM polls this for 60s when action is pending
 
 File outputs
 ------------

@@ -1,15 +1,17 @@
 """
-Smart Doorbell — Admin Dashboard
-==================================
+Smart Doorbell — Admin Dashboard (Version 2.1)
+==============================================
 Streamlit frontend. Run alongside doorbell_server.py.
 
-    streamlit run ./Version2/doorbell_dashboard2.py
+    streamlit run doorbell_dashboard2_1.py
 
-Changes from the original check-in dashboard:
+Changes in Version 2.1 (Interactive Update):
+  • Added interactive ADMIT / DENY buttons in Live tab for unknown visitors
+  • Buttons resolve pending events via server's /resolve_event endpoint
   • Live tab shows visitor image fetched from server's /latest_image endpoint
   • Audit log renders image thumbnails from captures/ directory
-  • CSV now has 5 columns (added ImageFile); old 4-column logs still load safely
-  • Admin tab now also shows the captures/ folder size
+  • CSV includes ImageFile column; robust fallback for older logs
+  • Admin tab shows the captures/ folder size and management tools
 """
 
 import streamlit as st
