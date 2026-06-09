@@ -1,26 +1,53 @@
-# Python Virtual Environment
+# ==========================================
+# Python & Virtual Environments
+# ==========================================
 .venv/
 venv/
 ENV/
-
-# Python Cache
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 
-# Streamlit Cache
-.streamlit/
-
-# ESP32 Build Artifacts (if using Arduino CLI/PlatformIO later)
+# ==========================================
+# ESP-IDF & CMake Build Artifacts
+# ==========================================
 build/
-.pio/
+managed_components/
+dependencies.lock
+sdkconfig
+sdkconfig.old
+.ninja_deps
+.ninja_log
+CMakeCache.txt
+CMakeFiles/
 
-# Debug Images (Don't upload the temporary photos)
+# ==========================================
+# Arduino IDE & PlatformIO Artifacts
+# ==========================================
+.pio/
+*.elf
+*.bin
+*.map
+
+# ==========================================
+# Data, Captures, and Logs
+# ==========================================
 debug_latest_photo.jpg
 security_log.csv
 */latest_capture.jpg
-*/known_faces/
-*/captures/
+known_faces/
+captures/
 
+# ==========================================
+# Excluded Folders & IDE Configs
+# ==========================================
+sample_project/
+.vscode/
+.clangd
+.devcontainer/
+
+# ==========================================
 # OS Generated Files
+# ==========================================
 .DS_Store
 Thumbs.db

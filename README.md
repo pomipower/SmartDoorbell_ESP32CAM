@@ -1,69 +1,63 @@
-# 🚪 Smart Doorbell System (Edge-to-Cloud IoT)
+# Smart Doorbell V2.2 - Dual ESP32 System with Facial Recognition
 
-## 📖 Project Overview
+A high-performance, dual-microcontroller smart doorbell system. This project features a real-time 10 FPS JPEG video stream over WebSockets, hardware-accelerated JPEG decoding on an internal display, and a FastAPI Python backend for asynchronous facial recognition.
 
-This project is a distributed IoT Smart Doorbell architecture. It utilizes an ESP32-CAM as an edge node for hardware interrupts and image capture, a Python Flask backend for heavy lifting (computer vision and WebSocket orchestration), an indoor ESP32-based TFT display for real-time visitor monitoring, and a Streamlit dashboard for administrative telemetry and access control.
+## System Architecture
 
-The system features real-time facial recognition using 128-dimensional embeddings, secure relay latch control, and sub-second bi-directional communication via WebSockets.
+* **Outdoor Unit (`camera_idf`):** ESP32-CAM running an ESP-IDF v5.2 firmware. Captures video and streams binary JPEG frames directly to the backend via WebSockets.
+* **Backend Server (`server`):** FastAPI Python application. Acts as the WebSocket router, performs facial recognition using HOG models (`face_recognition`), and maintains the state of the door.
+* **Admin Dashboard (`dashboard`):** Streamlit web interface for monitoring the live feed, reviewing security logs, and manually resolving "Unknown Visitor" events.
+* **Indoor Display (`Doorbell_Indoor_Display_RGB_Video`):** PANLEE BC02 (WT32-S3-WROVER-N16R8) running Arduino IDE C++. Features a FreeRTOS dual-core Ping-Pong buffer to simultaneously download network frames on Core 1 and decode JPEGs to the 480x480 RGB display on Core 0 without blocking.
+  * *(Note: The `display_idf` folder contains experimental ESP-IDF driver logic and is kept for documentation purposes).*
 
-## 🔌 Hardware Setup (Brief)
+## Hardware Requirements
+* ESP32-CAM module (with OV3660 camera)
+* PANLEE BC02 ZX3D95CE01S-TR-V12 (4.0" 480x480 IPS Display with GC9503V driver)
+* PC/Server running Python 3.10+
 
-### 1\. Outdoor Unit (ESP32-CAM)
+## Setup & Build Guide
 
-- **Camera:** OV2640 / OV3360 attached via ribbon cable.
-- **Doorbell Button:** Connect one leg to **GPIO 13** and the other to **GND**.
-- **Door Latch Relay:** Connect the Signal pin to **GPIO 14**, VCC to **5V**, and GND to **GND**. _(Note: Uses an Active-Low JQC3F-05VDC-C module)._
-- **Power:** 5V via the MB Download module.
+### 1. Backend Server & Dashboard
+Ensure you have Python installed, then install the dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-### 2\. Indoor Monitor (ESP32 Display Module)
+**Backend Server**
+Run the FastAPI backend with keepalive pings disabled to prevent streaming timeouts:
+```bash
+uvicorn doorbell_server_fastapi:app --host 0.0.0.0 --port 5050 --ws-ping-interval 0 --ws-ping-timeout 0
+```
 
-- _e.g., Waveshare ESP32-S3 Touch / CYD (Cheap Yellow Display)_
-- **Power:** 5V via USB-C.
-- **Interfacing:** Operates entirely over Wi-Fi. No physical connections to the outdoor unit are required.
+**Admin Dashboard**
+In a separate terminal, launch the Streamlit admin panel:
+```bash
+streamlit run doorbell_dashboard_fastapi.py
+```
 
-## 💻 Software Setup & Run Instructions
+### 2. Outdoor Camera Firmware (ESP-IDF)
+Navigate to the `camera_idf` directory and build using the Espressif IoT Development Framework (v5.2+):
+```bash
+cd camera_idf
+idf.py set-target esp32
+idf.py build
+idf.py -p <COM_PORT> flash monitor
+```
 
-### Phase 1: Environment Preparation (PC/Server)
+### 3. Indoor Display Firmware (Arduino)
+Open the .ino file inside Doorbell_Indoor_Display_RGB_Video using Arduino IDE 2.x.
 
-- Ensure Python 3.8+ is installed on your machine.
-- Clone this repository and navigate to the root directory.
-- Install the required Python dependencies:  
-   ```pip install -r requirements.txt```
+**Libraries required:**
+* `LovyanGFX` by Lovyan
+* `PanelLan` by Lovyan
+* `TFT_eSPI` by Bodmer
+* `WebSockets` by Markus Sattler
 
-- Create a folder named `known_faces` in the root directory.
-- Place clear, well-lit photos of authorized users in the `known_faces` directory. Name the files exactly as you want them to appear (e.g., John.jpg, Sarah.png).
+**Board Settings (ESP32S3 Dev Module):**
+* Flash Size: 16MB (128Mb)
+* PSRAM: OPI PSRAM (Required for dual-buffer video streaming)
+* Partition Scheme: Huge APP (3MB No OTA / 1MB SPIFFS)
+* Flash Mode: QIO 80MHz
 
-### Phase 2: Firmware Flashing (ESP32 Nodes)
+Compile and upload via the UART programmer.
 
-- Open the Arduino IDE.
-- Install the following libraries via the Library Manager:
-  - `ArduinoJson` by Benoit Blanchon
-  - `WebSockets` by Markus Sattler
-  - `TFT*eSPI` by Bodmer *(Configure `User*Setup.h` in the library folder for your specific display)*
-  - `TJpg_Decoder` by Bodmer
-- Open `Doorbell_Outdoor_Cam.ino` and `Doorbell_Indoor_Display.ino`.
-- Update the Wi-Fi credentials (ssid, password) in both files.
-- Update the `serverName`, `websocket_server`, and `image_url` variables with the **IPv4 Address of your PC running the Flask server**.
-- Flash the respective codes to your ESP32-CAM and ESP32 Display Module.
-
-### Phase 3: System Execution
-
-To bring the system online, the boot sequence is critical. Open two separate terminal windows.
-
-**Terminal 1 (Backend Server):**
-
-```python doorbell_server.py```
-
-_Wait for the "Smart Doorbell Server Active on Port 5050..." message._
-
-**Terminal 2 (Admin Dashboard):**
-
-```streamlit run doorbell_dashboard.py```
-
-_Your browser will automatically open the admin panel._
-
-**Hardware Boot:**
-
-- Power up the Indoor Display Module. Wait for the "System Armed" message indicating a successful WebSocket connection to your server.
-- Power up the ESP32-CAM.
-- Press the physical button to trigger the facial recognition pipeline!
