@@ -1,0 +1,21 @@
+# 1. Flash Memory Configuration (Standard ESP32-CAM has 4MB)
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# 2. Enable External PSRAM (CRITICAL for ESP32-CAM / CAMERA_FB_IN_PSRAM)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_SPEED_40M=y
+
+# 3. Partition Table (Expand App size to fit Camera + WebSocket drivers)
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+CONFIG_PARTITION_TABLE_CUSTOM=n
+
+# 4. Memory / Task Stack (Camera and WebSockets require more headroom)
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# 5. Enable HTTP Client & WebSockets
+CONFIG_ESP_HTTP_CLIENT_ENABLE=y
+
+# 6. Set FreeRTOS Tick Rate to 1000Hz (Better for 10FPS WebSocket streaming)
+CONFIG_FREERTOS_HZ=1000
