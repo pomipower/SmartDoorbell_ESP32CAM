@@ -1,0 +1,21 @@
+# 1. Flash & PSRAM Configuration
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_SPEED_40M=y
+
+# 2. Partitions (Models are large, we need app space)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_OFFSET=0x8000
+
+# 3. Memory / Task Stack (AI needs massive headroom)
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+CONFIG_FREERTOS_HZ=1000
+
+# 4. Enable C++ Exceptions (Required by esp-dl)
+CONFIG_COMPILER_CXX_EXCEPTIONS=y
+
+# Extend the FreeRTOS Watchdog timeout to allow for heavy MobileFaceNet inference
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=25
