@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doorbell Admin OS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-900 text-white font-sans min-h-screen p-6">
+    <div class="max-w-6xl mx-auto">
+
+        <div class="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
+            <h1 class="text-3xl font-bold tracking-wider text-blue-400">DOORBELL <span class="text-white">OS</span></h1>
+            <div class="flex items-center space-x-6">
+                <div class="text-gray-400 text-sm">Users in DB: <span id="ui-total-users"
+                        class="text-white font-bold text-lg">0</span></div>
+                <div class="flex items-center space-x-2">
+                    <div id="connection-dot" class="w-3 h-3 rounded-full bg-red-500"></div>
+                    <span id="connection-text" class="text-gray-400 text-sm font-medium">Disconnected</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <div class="lg:col-span-2 flex flex-col space-y-4">
+                <div
+                    class="bg-gray-800 rounded-xl p-4 shadow-2xl border border-gray-700 flex flex-col items-center justify-center min-h-[400px]">
+                    <img id="doorbell-image" src="https://via.placeholder.com/640x480.png?text=Waiting+for+Camera..."
+                        class="w-full h-auto rounded shadow-lg hidden">
+                    <div id="waiting-text" class="text-gray-500 animate-pulse text-lg">Waiting for hardware trigger...
+                    </div>
+                </div>
+
+                <div id="intruder-actions"
+                    class="hidden bg-red-900/50 border border-red-500 rounded-xl p-4 flex justify-between items-center">
+                    <div>
+                        <h3 class="text-red-400 font-bold text-lg">⚠️ UNKNOWN PERSON DETECTED</h3>
+                        <p class="text-gray-300 text-sm">Do you want to manually unlock the door?</p>
+                    </div>
+                    <div class="space-x-4">
+                        <button onclick="denyIntruder()"
+                            class="px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white font-bold transition">Deny</button>
+                        <button onclick="admitIntruder()"
+                            class="px-6 py-2 bg-green-600 hover:bg-green-500 rounded text-white font-bold transition">Admit
+                            (Unlock)</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-col space-y-6">
+
+                <div id="status-card"
+                    class="bg-gray-800 rounded-xl p-6 shadow-xl border border-gray-700 transition-colors duration-300">
+                    <h2 class="text-sm text-gray-400 uppercase tracking-widest mb-1">Current Status</h2>
+                    <div id="status-text" class="text-3xl font-bold text-gray-100">IDLE</div>
+                    <div class="mt-4 grid grid-cols-2 gap-4">
+                        <div class="bg-gray-900/50 p-3 rounded">
+                            <p class="text-xs text-gray-500">USER ID</p>
+                            <p id="ui-id" class="text-xl font-mono text-gray-300">--</p>
+                        </div>
+                        <div class="bg-gray-900/50 p-3 rounded">
+                            <p class="text-xs text-gray-500">SIMILARITY</p>
+                            <p id="ui-sim" class="text-xl font-mono text-gray-300">--</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 rounded-xl p-6 shadow-xl border border-gray-700">
+                    <h2 class="text-sm text-gray-400 uppercase tracking-widest mb-4">Admin Controls</h2>
+
+                    <div class="flex items-center justify-between bg-gray-900 p-4 rounded mb-4">
+                        <span class="text-sm font-medium">Registration Mode</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="mode-toggle" class="sr-only peer" onchange="toggleMode()">
+                            <div
+                                class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600">
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="space-y-3">
+                        <button onclick="sendCommand('unlock_door')"
+                            class="w-full py-3 bg-green-700 hover:bg-green-600 rounded text-white font-bold text-sm transition">
+                            🔓 Manual Override (Unlock Door)
+                        </button>
+                        <button onclick="sendCommand('delete_user')"
+                            class="w-full py-3 bg-red-800 hover:bg-red-700 rounded text-white font-bold text-sm transition">
+                            🗑️ Undo Last Registration
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 flex-grow">
+                    <h2 class="text-sm text-gray-400 uppercase tracking-widest mb-2">System Log</h2>
+                    <div id="log-container" class="space-y-1 h-32 overflow-y-auto font-mono text-xs text-gray-400">
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // CHANGE THIS TO YOUR LOCAL PC IP ADDRESS
+        const ws = new WebSocket("ws://127.0.0.1:8000/ws/dashboard");
+
+        function addLog(msg) {
+            const time = new Date().toLocaleTimeString();
+            document.getElementById('log-container').innerHTML = `<div class="mb-1"><span class="text-blue-400">[${time}]</span> ${msg}</div>` + document.getElementById('log-container').innerHTML;
+        }
+
+        // WebSockets Setup
+        ws.onopen = () => {
+            document.getElementById('connection-dot').classList.replace('bg-red-500', 'bg-green-500');
+            document.getElementById('connection-text').innerText = "Connected";
+            addLog("System Online. Dashboard synced.");
+        };
+        ws.onclose = () => {
+            document.getElementById('connection-dot').classList.replace('bg-green-500', 'bg-red-500');
+            document.getElementById('connection-text').innerText = "Disconnected";
+            addLog("Lost connection to Server.");
+        };
+
+        // Outgoing Commands
+        function sendCommand(cmd, extra = {}) {
+            ws.send(JSON.stringify({ cmd: cmd, ...extra }));
+            addLog(`Sent command: <strong>${cmd}</strong>`);
+        }
+
+        function toggleMode() {
+            const isChecked = document.getElementById('mode-toggle').checked;
+            const mode = isChecked ? "registration" : "security";
+            sendCommand("set_mode", { mode: mode });
+        }
+
+        function admitIntruder() {
+            sendCommand('unlock_door');
+            document.getElementById('intruder-actions').classList.add('hidden');
+            addLog("Intruder admitted. Door unlocked manually.");
+        }
+
+        function denyIntruder() {
+            document.getElementById('intruder-actions').classList.add('hidden');
+            addLog("Intruder denied. Ignoring.");
+        }
+
+        // Incoming Data
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'error') { addLog(`<span class="text-red-400">ERROR: ${data.message}</span>`); return; }
+
+            // Update UI State from Payload
+            if (data.total_users !== undefined) document.getElementById('ui-total-users').innerText = data.total_users;
+            if (data.registration_mode !== undefined) document.getElementById('mode-toggle').checked = data.registration_mode;
+
+            // Only update image/status if it's an AI event (not just a background state broadcast)
+            if (data.image) {
+                document.getElementById('waiting-text').classList.add('hidden');
+                document.getElementById('doorbell-image').classList.remove('hidden');
+                document.getElementById('doorbell-image').src = `data:image/jpeg;base64,${data.image}`;
+
+                document.getElementById('ui-id').innerText = data.id !== undefined && data.id > 0 ? data.id : "--";
+                document.getElementById('ui-sim').innerText = data.similarity ? (data.similarity * 100).toFixed(2) + "%" : "--";
+                document.getElementById('status-text').innerText = data.status;
+
+                // Update Colors based on status
+                const sc = document.getElementById('status-card');
+                sc.className = "bg-gray-800 rounded-xl p-6 shadow-xl border border-gray-700 transition-colors duration-300";
+                document.getElementById('intruder-actions').classList.add('hidden');
+
+                statusText.classList.replace('text-green-400', 'text-gray-100');
+                statusText.classList.replace('text-red-400', 'text-gray-100');
+                statusText.classList.replace('text-blue-400', 'text-gray-100');
+                statusText.classList.replace('text-yellow-400', 'text-gray-100');
+
+                if (data.status === "MATCH") {
+                    sc.classList.add('!bg-green-900', '!border-green-500');
+                    statusText.classList.replace('text-gray-100', 'text-green-400');
+                    addLog(`Face verified. Door unlocked (Similarity: ${(data.similarity * 100).toFixed(1)}%)`);
+                } else if (data.status === "INTRUDER") {
+                    sc.classList.add('!bg-red-900', '!border-red-500');
+                    statusText.classList.replace('text-gray-100', 'text-red-400');
+                    document.getElementById('intruder-actions').classList.remove('hidden');
+                    addLog("Warning: Unknown face detected at door.");
+                } else if (data.status === "ENROLLED") {
+                    sc.classList.add('!bg-blue-900', '!border-blue-500');
+                    statusText.classList.replace('text-gray-100', 'text-blue-400');
+                    addLog(`New user registered successfully as ID ${data.id}.`);
+                } else if (data.status === "ALREADY_REGISTERED") {
+                    sc.classList.add('!bg-yellow-900', '!border-yellow-500');
+                    statusText.classList.replace('text-gray-100', 'text-yellow-400');
+                    addLog(`Registration rejected. User already exists as ID ${data.id}.`);
+                }
+            } else if (data.status) {
+                addLog(`ESP32 State Update: ${data.status}`);
+            }
+        };
+    </script>
+</body>
+
+</html>
