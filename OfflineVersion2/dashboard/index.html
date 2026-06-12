@@ -6,6 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Doorbell Admin OS</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .tab-active {
+            border-bottom: 2px solid #60A5FA;
+            color: #60A5FA;
+        }
+
+        .tab-inactive {
+            color: #9CA3AF;
+        }
+    </style>
 </head>
 
 <body class="bg-gray-900 text-white font-sans min-h-screen p-6">
@@ -23,8 +33,15 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="flex space-x-8 mb-6 border-b border-gray-800">
+            <button id="tab-btn-live" onclick="switchTab('live')"
+                class="pb-2 font-bold tab-active tracking-wider uppercase text-sm transition">Live Dashboard</button>
+            <button id="tab-btn-history" onclick="switchTab('history')"
+                class="pb-2 font-bold tab-inactive tracking-wider uppercase text-sm transition hover:text-gray-300">History
+                & Gallery</button>
+        </div>
 
+        <div id="tab-live" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="lg:col-span-2 flex flex-col space-y-4">
                 <div
                     class="bg-gray-800 rounded-xl p-4 shadow-2xl border border-gray-700 flex flex-col items-center justify-center min-h-[400px]">
@@ -35,15 +52,16 @@
                 </div>
 
                 <div id="intruder-actions"
-                    class="hidden bg-red-900/50 border border-red-500 rounded-xl p-4 flex justify-between items-center">
+                    class="hidden bg-red-900/50 border border-red-500 rounded-xl p-4 justify-between items-center transition-all duration-300">
                     <div>
                         <h3 class="text-red-400 font-bold text-lg">⚠️ UNKNOWN PERSON DETECTED</h3>
-                        <p class="text-gray-300 text-sm">Do you want to manually unlock the door?</p>
+                        <p id="intruder-prompt" class="text-gray-300 text-sm">Do you want to manually unlock the door?
+                        </p>
                     </div>
                     <div class="space-x-4">
-                        <button onclick="denyIntruder()"
+                        <button id="btn-deny" onclick="resolveIntruder('deny')"
                             class="px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white font-bold transition">Deny</button>
-                        <button onclick="admitIntruder()"
+                        <button id="btn-admit" onclick="resolveIntruder('admit')"
                             class="px-6 py-2 bg-green-600 hover:bg-green-500 rounded text-white font-bold transition">Admit
                             (Unlock)</button>
                     </div>
@@ -51,7 +69,6 @@
             </div>
 
             <div class="flex flex-col space-y-6">
-
                 <div id="status-card"
                     class="bg-gray-800 rounded-xl p-6 shadow-xl border border-gray-700 transition-colors duration-300">
                     <h2 class="text-sm text-gray-400 uppercase tracking-widest mb-1">Current Status</h2>
@@ -70,7 +87,6 @@
 
                 <div class="bg-gray-800 rounded-xl p-6 shadow-xl border border-gray-700">
                     <h2 class="text-sm text-gray-400 uppercase tracking-widest mb-4">Admin Controls</h2>
-
                     <div class="flex items-center justify-between bg-gray-900 p-4 rounded mb-4">
                         <span class="text-sm font-medium">Registration Mode</span>
                         <label class="relative inline-flex items-center cursor-pointer">
@@ -80,16 +96,13 @@
                             </div>
                         </label>
                     </div>
-
                     <div class="space-y-3">
                         <button onclick="sendCommand('unlock_door')"
-                            class="w-full py-3 bg-green-700 hover:bg-green-600 rounded text-white font-bold text-sm transition">
-                            🔓 Manual Override (Unlock Door)
-                        </button>
+                            class="w-full py-3 bg-green-700 hover:bg-green-600 rounded text-white font-bold text-sm transition">🔓
+                            Manual Override</button>
                         <button onclick="sendCommand('delete_user')"
-                            class="w-full py-3 bg-red-800 hover:bg-red-700 rounded text-white font-bold text-sm transition">
-                            🗑️ Undo Last Registration
-                        </button>
+                            class="w-full py-3 bg-red-800 hover:bg-red-700 rounded text-white font-bold text-sm transition">🗑️
+                            Undo Last Registration</button>
                     </div>
                 </div>
 
@@ -98,21 +111,75 @@
                     <div id="log-container" class="space-y-1 h-32 overflow-y-auto font-mono text-xs text-gray-400">
                     </div>
                 </div>
-
             </div>
         </div>
+
+        <div id="tab-history" class="hidden flex-col space-y-6">
+            <div class="flex justify-between items-end">
+                <h2 class="text-xl font-bold text-gray-200">Last 12 Visitors</h2>
+                <button onclick="sendCommand('clear_history')"
+                    class="px-4 py-2 bg-red-800 hover:bg-red-700 rounded text-white font-bold text-xs uppercase tracking-wider transition">⚠️
+                    Clear All History</button>
+            </div>
+
+            <div id="gallery-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            </div>
+
+            <h2 class="text-xl font-bold text-gray-200 mt-8">Event Log</h2>
+            <div class="bg-gray-800 rounded-xl overflow-hidden border border-gray-700">
+                <table class="w-full text-left text-sm text-gray-400">
+                    <thead class="bg-gray-900 text-gray-300 uppercase text-xs">
+                        <tr>
+                            <th class="px-6 py-3">Timestamp</th>
+                            <th class="px-6 py-3">Status</th>
+                            <th class="px-6 py-3">ID / Sim</th>
+                            <th class="px-6 py-3">Action Taken</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-tbody" class="divide-y divide-gray-700">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 
     <script>
         // CHANGE THIS TO YOUR LOCAL PC IP ADDRESS
-        const ws = new WebSocket("ws://127.0.0.1:8000/ws/dashboard");
+        const SERVER_IP = "192.168.1.100";
+        const ws = new WebSocket(`ws://${SERVER_IP}:8000/ws/dashboard`);
+
+        let currentIntruderRawId = null;
+
+        function switchTab(tab) {
+            const liveTab = document.getElementById('tab-live');
+            const historyTab = document.getElementById('tab-history');
+            const liveBtn = document.getElementById('tab-btn-live');
+            const historyBtn = document.getElementById('tab-btn-history');
+
+            if (tab === 'live') {
+                liveTab.classList.remove('hidden');
+                historyTab.classList.add('hidden');
+                historyTab.classList.remove('flex');
+                liveBtn.className = 'pb-2 font-bold tab-active tracking-wider uppercase text-sm transition';
+                historyBtn.className = 'pb-2 font-bold tab-inactive tracking-wider uppercase text-sm transition hover:text-gray-300';
+            } else {
+                liveTab.classList.add('hidden');
+                historyTab.classList.remove('hidden');
+                historyTab.classList.add('flex');
+                historyBtn.className = 'pb-2 font-bold tab-active tracking-wider uppercase text-sm transition';
+                liveBtn.className = 'pb-2 font-bold tab-inactive tracking-wider uppercase text-sm transition hover:text-gray-300';
+
+                // FIX: Force a fresh pull of data every time the tab is opened!
+                sendCommand("get_history");
+            }
+        }
 
         function addLog(msg) {
             const time = new Date().toLocaleTimeString();
             document.getElementById('log-container').innerHTML = `<div class="mb-1"><span class="text-blue-400">[${time}]</span> ${msg}</div>` + document.getElementById('log-container').innerHTML;
         }
 
-        // WebSockets Setup
         ws.onopen = () => {
             document.getElementById('connection-dot').classList.replace('bg-red-500', 'bg-green-500');
             document.getElementById('connection-text').innerText = "Connected";
@@ -124,39 +191,87 @@
             addLog("Lost connection to Server.");
         };
 
-        // Outgoing Commands
         function sendCommand(cmd, extra = {}) {
             ws.send(JSON.stringify({ cmd: cmd, ...extra }));
-            addLog(`Sent command: <strong>${cmd}</strong>`);
+            if (cmd !== 'get_history') addLog(`Sent command: <strong>${cmd}</strong>`);
         }
 
         function toggleMode() {
             const isChecked = document.getElementById('mode-toggle').checked;
-            const mode = isChecked ? "registration" : "security";
-            sendCommand("set_mode", { mode: mode });
+            sendCommand("set_mode", { mode: isChecked ? "registration" : "security" });
         }
 
-        function admitIntruder() {
-            sendCommand('unlock_door');
-            document.getElementById('intruder-actions').classList.add('hidden');
-            addLog("Intruder admitted. Door unlocked manually.");
+        function resolveIntruder(action) {
+            if (!currentIntruderRawId) return;
+            sendCommand("resolve_intruder", { action: action, raw_id: currentIntruderRawId });
+
+            // Instantly grey out buttons locally to prevent double clicks
+            disableIntruderButtons(action === 'admit' ? 'Admitted' : 'Denied');
         }
 
-        function denyIntruder() {
-            document.getElementById('intruder-actions').classList.add('hidden');
-            addLog("Intruder denied. Ignoring.");
+        function disableIntruderButtons(text) {
+            const btnAdmit = document.getElementById('btn-admit');
+            const btnDeny = document.getElementById('btn-deny');
+            btnAdmit.disabled = true; btnDeny.disabled = true;
+            btnAdmit.className = "px-6 py-2 bg-gray-600 rounded text-gray-400 font-bold cursor-not-allowed";
+            btnDeny.className = "px-6 py-2 bg-gray-600 rounded text-gray-400 font-bold cursor-not-allowed";
+            document.getElementById('intruder-prompt').innerText = `Action Recorded: ${text}`;
         }
 
-        // Incoming Data
+        function renderHistory(historyArray) {
+            const tbody = document.getElementById('history-tbody');
+            const gallery = document.getElementById('gallery-grid');
+            tbody.innerHTML = ''; gallery.innerHTML = '';
+
+            // Render Table (All)
+            [...historyArray].reverse().forEach(record => {
+                const tr = document.createElement('tr');
+                let color = record.status === 'MATCH' ? 'text-green-400' : record.status === 'INTRUDER' ? 'text-red-400' : 'text-blue-400';
+                tr.innerHTML = `
+                    <td class="px-6 py-4">${record.timestamp}</td>
+                    <td class="px-6 py-4 font-bold ${color}">${record.status}</td>
+                    <td class="px-6 py-4">${record.id > 0 ? record.id : 'Unknown'} (${record.similarity ? (record.similarity * 100).toFixed(1) + '%' : '--'})</td>
+                    <td class="px-6 py-4 font-medium text-gray-300">${record.action}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Render Gallery (Last 12)
+            const last12 = [...historyArray].reverse().slice(0, 12);
+            last12.forEach(record => {
+                const div = document.createElement('div');
+                div.className = "bg-gray-800 p-2 rounded-lg border border-gray-700 flex flex-col items-center relative group";
+                let badgeColor = record.status === 'MATCH' ? 'bg-green-500' : record.status === 'INTRUDER' ? 'bg-red-500' : 'bg-blue-500';
+                div.innerHTML = `
+                    <div class="absolute top-4 right-4 ${badgeColor} text-white text-xs font-bold px-2 py-1 rounded z-10">${record.status}</div>
+                    <img src="http://${SERVER_IP}:8000${record.image_url}" class="w-full h-32 object-cover rounded mb-2">
+                    <p class="text-xs text-gray-400 w-full text-center">${record.timestamp.split(' ')[1]} | Action: ${record.action}</p>
+                `;
+                gallery.appendChild(div);
+            });
+
+            // Sync the Live Dashboard buttons if the currently displayed intruder was resolved by another client/display
+            if (currentIntruderRawId) {
+                const latestRecord = historyArray.find(r => r.raw_id === currentIntruderRawId);
+                if (latestRecord && latestRecord.action !== "Pending") {
+                    disableIntruderButtons(latestRecord.action);
+                }
+            }
+        }
+
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             if (data.type === 'error') { addLog(`<span class="text-red-400">ERROR: ${data.message}</span>`); return; }
 
-            // Update UI State from Payload
+            // Handle History Updates
+            if (data.type === 'history_update') {
+                renderHistory(data.data);
+                return;
+            }
+
             if (data.total_users !== undefined) document.getElementById('ui-total-users').innerText = data.total_users;
             if (data.registration_mode !== undefined) document.getElementById('mode-toggle').checked = data.registration_mode;
 
-            // Only update image/status if it's an AI event (not just a background state broadcast)
             if (data.image) {
                 document.getElementById('waiting-text').classList.add('hidden');
                 document.getElementById('doorbell-image').classList.remove('hidden');
@@ -166,25 +281,41 @@
                 document.getElementById('ui-sim').innerText = data.similarity ? (data.similarity * 100).toFixed(2) + "%" : "--";
                 document.getElementById('status-text').innerText = data.status;
 
-                // Update Colors based on status
                 const sc = document.getElementById('status-card');
                 sc.className = "bg-gray-800 rounded-xl p-6 shadow-xl border border-gray-700 transition-colors duration-300";
-                document.getElementById('intruder-actions').classList.add('hidden');
 
-                statusText.classList.replace('text-green-400', 'text-gray-100');
-                statusText.classList.replace('text-red-400', 'text-gray-100');
-                statusText.classList.replace('text-blue-400', 'text-gray-100');
-                statusText.classList.replace('text-yellow-400', 'text-gray-100');
+                // Reset Intruder Actions UI to Hidden initially
+                const actionsDiv = document.getElementById('intruder-actions');
+                actionsDiv.classList.add('hidden');
+                actionsDiv.classList.remove('flex');
+
+                document.getElementById('btn-admit').disabled = false;
+                document.getElementById('btn-deny').disabled = false;
+                document.getElementById('btn-admit').className = "px-6 py-2 bg-green-600 hover:bg-green-500 rounded text-white font-bold transition";
+                document.getElementById('btn-deny').className = "px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white font-bold transition";
+                document.getElementById('intruder-prompt').innerText = "Do you want to manually unlock the door?";
+                currentIntruderRawId = null;
+
+                statusText.classList.remove('text-green-400', 'text-red-400', 'text-blue-400', 'text-yellow-400');
+                statusText.classList.add('text-gray-100');
 
                 if (data.status === "MATCH") {
                     sc.classList.add('!bg-green-900', '!border-green-500');
                     statusText.classList.replace('text-gray-100', 'text-green-400');
-                    addLog(`Face verified. Door unlocked (Similarity: ${(data.similarity * 100).toFixed(1)}%)`);
+                    addLog(`Face verified. Door unlocked.`);
                 } else if (data.status === "INTRUDER") {
                     sc.classList.add('!bg-red-900', '!border-red-500');
                     statusText.classList.replace('text-gray-100', 'text-red-400');
-                    document.getElementById('intruder-actions').classList.remove('hidden');
+
+                    // FIX: Explicitly add 'flex' display so the buttons format correctly!
+                    actionsDiv.classList.remove('hidden');
+                    actionsDiv.classList.add('flex');
+
+                    if (data.event_record) {
+                        currentIntruderRawId = data.event_record.raw_id;
+                    }
                     addLog("Warning: Unknown face detected at door.");
+
                 } else if (data.status === "ENROLLED") {
                     sc.classList.add('!bg-blue-900', '!border-blue-500');
                     statusText.classList.replace('text-gray-100', 'text-blue-400');
@@ -192,10 +323,10 @@
                 } else if (data.status === "ALREADY_REGISTERED") {
                     sc.classList.add('!bg-yellow-900', '!border-yellow-500');
                     statusText.classList.replace('text-gray-100', 'text-yellow-400');
-                    addLog(`Registration rejected. User already exists as ID ${data.id}.`);
+                    addLog(`Registration rejected. User already exists.`);
                 }
             } else if (data.status) {
-                addLog(`ESP32 State Update: ${data.status}`);
+                addLog(`ESP32 State: ${data.status}`);
             }
         };
     </script>

@@ -19,7 +19,7 @@
 // ── User Configuration ────────────────────────────────────────────────────────
 #define WIFI_SSID           "Galaxy S24"
 #define WIFI_PASS           "qwne3344"
-#define WS_SERVER_URI       "ws://10.151.110.250:5050/ws/camera"
+#define WS_SERVER_URI       "ws://172.28.199.250:5050/ws/camera"
 
 #define BUTTON_PIN          1
 #define RELAY_PIN           13

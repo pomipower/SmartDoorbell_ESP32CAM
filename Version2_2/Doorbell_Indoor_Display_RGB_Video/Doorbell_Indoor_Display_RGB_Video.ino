@@ -11,7 +11,7 @@
 const char* WIFI_SSID     = "WIFINAME";
 const char* WIFI_PASS     = "PASSWORD";
 
-const char* WS_HOST       = "10.151.110.250";
+const char* WS_HOST       = "172.28.199.250";
 const uint16_t WS_PORT    = 5050;
 const char* WS_PATH       = "/ws/frontend";
 
