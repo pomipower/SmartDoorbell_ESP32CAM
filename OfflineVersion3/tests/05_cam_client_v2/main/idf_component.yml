@@ -1,0 +1,6 @@
+dependencies:
+  idf:
+    version: ">=5.1.4"
+  espressif/esp32-camera: "^2.0.0"
+  esp_websocket_client:
+    version: "^1.2.0"
