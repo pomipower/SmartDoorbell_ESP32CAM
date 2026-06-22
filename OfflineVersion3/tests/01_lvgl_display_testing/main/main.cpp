@@ -1,13 +1,20 @@
-#include "Arduino.h"
-#include "boards.h" 
-#include "lvgl.h"
+#include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_timer.h"
+#include "esp_log.h"
 #include "esp_heap_caps.h"
 
-// 1. Hardware Initialization
+// 1. Pure ESP-IDF Native Includes (No Arduino)
+#include "boards.h" 
+#include "lvgl.h"
+
+static const char *TAG = "S3_NATIVE_CORE";
+
+// 2. Instantiate the exact manufacturer board
 PanelLan tft(BOARD_BC02);
 
-// 2. LVGL Buffers
+// 3. LVGL Buffers
 static const uint32_t screenWidth  = 480;
 static const uint32_t screenHeight = 480;
 static lv_disp_draw_buf_t draw_buf;
@@ -15,7 +22,7 @@ static lv_color_t *buf;
 
 static void lv_tick_task(void *arg) { lv_tick_inc(2); }
 
-// 3. LVGL Bridging
+// 4. LVGL Hardware Bridging
 void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
     uint32_t w = (area->x2 - area->x1 + 1);
     uint32_t h = (area->y2 - area->y1 + 1);
@@ -35,41 +42,23 @@ void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
     }
 }
 
-// 4. Test UI
-static void btn_event_cb(lv_event_t * e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    lv_obj_t * btn = lv_event_get_target(e);
-    if(code == LV_EVENT_CLICKED) {
-        static uint8_t cnt = 0;
-        cnt++;
-        lv_obj_t * label = lv_obj_get_child(btn, 0);
-        lv_label_set_text_fmt(label, "Tapped: %d", cnt);
-    }
-}
-
+// 5. Minimal UI Test
 void build_test_ui() {
-    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x005500), LV_PART_MAIN); 
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x004488), LV_PART_MAIN); 
 
     lv_obj_t * label = lv_label_create(lv_scr_act());
-    lv_label_set_text(label, "Smart Doorbell V3 - SYSTEM ONLINE");
+    lv_label_set_text(label, "Smart Doorbell V3 - NATIVE ESP-IDF");
     lv_obj_set_style_text_color(label, lv_color_hex(0xffffff), LV_PART_MAIN);
     lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 50);
-
-    lv_obj_t * btn = lv_btn_create(lv_scr_act());
-    lv_obj_set_size(btn, 200, 60);
-    lv_obj_align(btn, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_ALL, NULL);
-
-    lv_obj_t * btn_label = lv_label_create(btn);
-    lv_label_set_text(btn_label, "Tap Me!");
-    lv_obj_center(btn_label);
 }
 
-// 5. FreeRTOS Task
+// 6. FreeRTOS GUI Task
 void guiTask(void *pvParameter) {
+    ESP_LOGI(TAG, "Mounting LVGL...");
     lv_init();
 
     size_t buffer_size = screenWidth * 40 * sizeof(lv_color_t);
+    // CRITICAL: Force the LVGL draw buffer into PSRAM to save internal memory for the ML models
     buf = (lv_color_t *)heap_caps_malloc(buffer_size, MALLOC_CAP_SPIRAM);
     lv_disp_draw_buf_init(&draw_buf, buf, NULL, screenWidth * 40);
 
@@ -97,28 +86,26 @@ void guiTask(void *pvParameter) {
     ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, 2 * 1000));
 
+    ESP_LOGI(TAG, "LVGL Task Running on Core 0");
+
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(10)); 
         lv_timer_handler(); 
     }
 }
 
-// 6. Native ESP-IDF Entry Point
-extern "C" void app_main() {
-    // Crucial: Boot the Arduino framework underlying HAL
-    initArduino();
+// 7. Pure Native ESP-IDF Entry Point
+extern "C" void app_main(void) {
+    ESP_LOGI(TAG, "Booting Smart Doorbell V3...");
 
-    // Now properly compile and execute the manufacturer's logic
-    tft.init();
+    // With the DMA memory expanded in menuconfig, this will successfully allocate the RGB buffers.
+    if (!tft.init()) {
+        ESP_LOGE(TAG, "FATAL: PanelLan initialization failed! Check DMA Memory limits.");
+        return; // Halt before we null-pointer crash
+    }
+    
     tft.setBrightness(128);
 
-    xTaskCreatePinnedToCore(
-        guiTask,     
-        "guiTask",   
-        1024 * 8,    
-        NULL,        
-        5,           
-        NULL,        
-        0            
-    );
+    // Pin the UI to Core 0. Your ML partner will use Core 1 for Face Recognition.
+    xTaskCreatePinnedToCore(guiTask, "guiTask", 1024 * 8, NULL, 5, NULL, 0);
 }
