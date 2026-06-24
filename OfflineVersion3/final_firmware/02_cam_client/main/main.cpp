@@ -216,7 +216,7 @@ void init_wifi_and_ws() {
 
     esp_websocket_client_config_t ws_cfg = {};
     ws_cfg.uri = "ws://192.168.4.1/ws";
-    ws_cfg.buffer_size = 32768; 
+    ws_cfg.buffer_size = 102400; 
     ws_cfg.reconnect_timeout_ms = 10000; 
     ws_cfg.network_timeout_ms = 10000;
     
