@@ -41,6 +41,7 @@ TaskHandle_t relay_task_handle = NULL;
 
 bool is_wifi_connected = false;
 bool is_ws_connected = false;
+volatile bool got_ip = false; // FLAG: Prevents WebSocket from starting before network is ready 
 
 void init_camera() {
     camera_config_t config = {};
@@ -166,7 +167,11 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         is_wifi_connected = false; 
         esp_wifi_connect();
-    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) is_wifi_connected = true;
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        is_wifi_connected = true;
+        ESP_LOGI(TAG, "Got IP!");
+        got_ip = true;  // THE FIX: Mark IP as received
+    }
 }
 
 static void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
@@ -213,6 +218,12 @@ void init_wifi_and_ws() {
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
     esp_wifi_start();
+
+    ESP_LOGI(TAG, "Waiting for IP address from S3 Hub...");
+    while (!got_ip) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    ESP_LOGI(TAG, "Network is up! Starting WebSocket...");
 
     esp_websocket_client_config_t ws_cfg = {};
     ws_cfg.uri = "ws://192.168.4.1/ws";
