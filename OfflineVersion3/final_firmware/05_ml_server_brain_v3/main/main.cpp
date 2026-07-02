@@ -1030,16 +1030,19 @@ esp_err_t ws_handler(httpd_req_t *req) {
             return ESP_FAIL;
         }
 
-        // PING PONG LOGIC: Eliminates 10 FPS memory fragmentation
         ws_pkt.payload = pp_buf[pp_write_idx];
-        httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
-
-        MLJob job; 
-        job.buf_idx = pp_write_idx; 
-        job.jpeg_len = ws_pkt.len;
         
-        if (xQueueSend(ml_queue, &job, 0) == pdTRUE) {
-            pp_write_idx = (pp_write_idx + 1) % 3; // CYCLE THROUGH 3 BUFFERS
+        // FIX 1: Verify the entire payload was received before queueing it!
+        if (httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len) == ESP_OK) {
+            MLJob job; 
+            job.buf_idx = pp_write_idx; 
+            job.jpeg_len = ws_pkt.len;
+            
+            if (xQueueSend(ml_queue, &job, 0) == pdTRUE) {
+                pp_write_idx = (pp_write_idx + 1) % 3; 
+            }
+        } else {
+            ESP_LOGW(TAG, "Network interference! Dropping incomplete/corrupted frame.");
         }
     }
     return ESP_OK;
@@ -1049,6 +1052,11 @@ httpd_handle_t start_webserver() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_open_sockets = 7; 
     config.stack_size = 10240; 
+    
+    // FIX 2: Aggressive network resilience for public environments
+    config.lru_purge_enable = true; // Forcibly kicks greedy browser sockets to make room for the Camera
+    config.recv_wait_timeout = 10;  // Increases payload timeout to 10 seconds to survive 2.4GHz interference
+    config.send_wait_timeout = 10; 
 
     httpd_uri_t uri_get = {}; uri_get.uri = "/"; uri_get.method = HTTP_GET; uri_get.handler = http_get_handler;
     httpd_uri_t img_get = {}; img_get.uri = "/img"; img_get.method = HTTP_GET; img_get.handler = img_get_handler;
